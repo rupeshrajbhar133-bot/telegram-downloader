@@ -4,7 +4,7 @@ import telebot
 import yt_dlp
 
 # ==========================================
-# BOT TOKEN - Railway Environment Variable
+# BOT TOKEN - Environment Variable
 # ==========================================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -30,7 +30,6 @@ def start(message):
     bot.reply_to(
         message,
         "👋 <b>Добро пожаловать!</b>\n\n"
-        "👇 Нажмите по кнопке снизу\n\n"
         "📥 Send me a public video URL.\n\n"
         f"🤖 {SIGNATURE}"
     )
@@ -41,7 +40,6 @@ def start(message):
 # ==========================================
 @bot.message_handler(func=lambda message: True)
 def download_media(message):
-
     url = (message.text or "").strip()
 
     if not url.startswith(("http://", "https://")):
@@ -61,15 +59,12 @@ def download_media(message):
 
     output_template = os.path.join(
         DOWNLOAD_DIR,
-        "%(title).80s.%(ext)s"
+        "%(id)s.%(ext)s"
     )
 
     ydl_opts = {
         "outtmpl": output_template,
-        "format": (
-            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
-            "best[ext=mp4]/best"
-        ),
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
         "merge_output_format": "mp4",
         "noplaylist": True,
         "retries": 5,
@@ -86,16 +81,23 @@ def download_media(message):
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
 
-            if not os.path.exists(filename):
-                base, _ = os.path.splitext(filename)
-                mp4_file = base + ".mp4"
-
-                if os.path.exists(mp4_file):
-                    filename = mp4_file
+            # Ensure correct extension for merged formats
+            base, _ = os.path.splitext(filename)
+            mp4_file = base + ".mp4"
+            
+            if os.path.exists(mp4_file):
+                filename = mp4_file
+            elif not os.path.exists(filename):
+                # Fallback search in download dir for the video ID
+                video_id = info.get("id")
+                for f in os.listdir(DOWNLOAD_DIR):
+                    if f.startswith(video_id):
+                        filename = os.path.join(DOWNLOAD_DIR, f)
+                        break
 
         if not filename or not os.path.exists(filename):
             bot.edit_message_text(
-                "❌ <b>Download failed.</b>\n\n"
+                "❌ <b>Download failed. File not found.</b>\n\n"
                 f"🤖 {SIGNATURE}",
                 message.chat.id,
                 status.message_id
@@ -164,14 +166,12 @@ print("🤖 @RD3B4T Downloader Bot is starting...")
 while True:
     try:
         print("🔄 Connecting to Telegram...")
-
         bot.infinity_polling(
             timeout=60,
             long_polling_timeout=60,
             skip_pending=True,
             allowed_updates=["message"]
         )
-
     except Exception as e:
         print("⚠️ Telegram connection error:")
         print(e)
